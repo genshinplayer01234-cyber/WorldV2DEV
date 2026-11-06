@@ -9781,8 +9781,9 @@ api.gen=0
 function api.Cancel() api.gen=api.gen+1;table.clear(again) end
 -- (where the bomb goes on them: "head", circling inside their head (tiny avatars included: the circle
 -- shrinks with their head), or "sweep", from the top of their body to their feet and back. nil takes
--- turns, to compare them)
-api.PLACE=nil
+-- turns, to compare them. Sweep is used: in a public server, 548 tries, sweep flung 86% and threw 71%
+-- out of the map, head 83% and 65%)
+api.PLACE="sweep"
 local turn=false
 function api.Place()
 if api.PLACE then return api.PLACE end
