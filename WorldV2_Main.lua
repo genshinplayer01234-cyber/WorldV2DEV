@@ -9740,10 +9740,25 @@ if fall>-15 then stopped=stopped+1 else stopped=0 end
 if stopped>=5 then break end
 end
 if os.clock()-started>=api.WATCH_TIME then again[target]=nil;return end
+stuckAt[target]=os.clock()
 api.Again(target,"was thrown down but got stuck in the map")
 end)
 end
-function api.Top(moving)
+-- (on some ground, like a thick map base with nothing under it, pushing straight down only bounces them
+-- back up. Someone who was thrown down but got stuck is, for STUCK_TIME s, pushed the old way instead:
+-- a spinning bomb sweeping their body, which throws them sideways off it)
+api.STUCK_TIME=20
+local stuckAt=setmetatable({},{__mode="k"})
+function api.Sideways(target)
+local at=target and stuckAt[target]
+return at~=nil and os.clock()-at<api.STUCK_TIME
+end
+function api.Spin(target)
+if api.Sideways(target) then return 1 end
+return api.SPIN
+end
+function api.Top(moving,target)
+if api.Sideways(target) then return false end
 if moving then return api.TOP_MOVING end
 return api.TOP_STILL
 end
@@ -9919,7 +9934,7 @@ spin=spin+0.9
 local around=hop and Vector3.zero or Vector3.new(math.cos(spin)*0.5,0,math.sin(spin)*0.5)
 local height=hop and HOP_RAISE+HOP_SWEEP*(1-2*progress) or (top+thickness/2)+((bottom+thickness/2)-(top+thickness/2))*progress
 local position=predicted+around+Vector3.new(0,height,0)
-if not ragdoll and not hop and out.Top(moving) then position=predicted+around+Vector3.new(0,top+thickness/2,0) end
+if not ragdoll and not hop and out.Top(moving,target) then position=predicted+around+Vector3.new(0,top+thickness/2,0) end
 if followUntil or pinned then position=current+Vector3.new(0,top+thickness/2,0) end
 if ragdoll then
 -- (ragdoll: the bomb goes exactly where Bomb Fling puts it, aim, prediction and all, but with far
@@ -9935,7 +9950,7 @@ else
 pcall(function()
 bomb.CFrame=CFrame.new(position)*rotation
 bomb.AssemblyLinearVelocity=Vector3.new(0,-POWER,0)
-bomb.AssemblyAngularVelocity=Vector3.new(0,POWER*out.SPIN,0)
+bomb.AssemblyAngularVelocity=Vector3.new(0,POWER*out.Spin(target),0)
 end)
 end
 local head=target.Character and target.Character:FindFirstChild("Head")
