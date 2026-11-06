@@ -9319,6 +9319,23 @@ local ok,result=pcall(function() return workspace:Raycast(position+Vector3.new(0
 return ok and result and result.Position.Y or nil
 end
 local CARRY_DEPTH=5
+-- (the bomb is kept CARRY_BELOW studs under whatever you're standing on (ground, a crate, a platform), at
+-- least CARRY_DEPTH under you: a fixed depth left it out in the open when you stood on something, and the
+-- game then gave it to a nearby player)
+local carrySpot=(function()
+local CARRY_BELOW=4
+local carryRay=RaycastParams.new()
+carryRay.FilterType=Enum.RaycastFilterType.Exclude
+return function(mine,bomb)
+local depth=CARRY_DEPTH
+pcall(function()
+carryRay.FilterDescendantsInstances={LocalPlayer.Character,bomb}
+local hit=workspace:Raycast(mine.Position,Vector3.new(0,-12,0),carryRay)
+if hit then depth=math.max(depth,mine.Position.Y-hit.Position.Y+CARRY_BELOW) end
+end)
+return mine.CFrame*CFrame.new(0,-depth,0)
+end
+end)()
 local verified=nil
 local CARRY_CHECK=1.5
 local carryTest,nextCarryTest,carryFails=nil,0,0
@@ -9688,7 +9705,7 @@ if exposure<api.FAR_BUDGET then return end
 while os.clock()-lastEnd<api.REST and alive and runtimeAlive and usable(bomb) do
 local mine=rootOf(LocalPlayer)
 if mine then pcall(function()
-bomb.CFrame=mine.CFrame*CFrame.new(0,-CARRY_DEPTH,0)
+bomb.CFrame=carrySpot(mine,bomb)
 bomb.AssemblyLinearVelocity=Vector3.zero;bomb.AssemblyAngularVelocity=Vector3.zero
 end) end
 RunService.Heartbeat:Wait()
@@ -9696,6 +9713,7 @@ end
 exposure=0
 end
 local again=setmetatable({},{__mode="k"})
+local stuckAt=setmetatable({},{__mode="k"})
 local told=setmetatable({},{__mode="k"})
 function api.Down(targetRoot,startY,measured)
 local ok,fall,y=pcall(function() return targetRoot.AssemblyLinearVelocity.Y,targetRoot.Position.Y end)
@@ -9748,7 +9766,6 @@ end
 -- back up. Someone who was thrown down but got stuck is, for STUCK_TIME s, pushed the old way instead:
 -- a spinning bomb sweeping their body, which throws them sideways off it)
 api.STUCK_TIME=20
-local stuckAt=setmetatable({},{__mode="k"})
 function api.Sideways(target)
 local at=target and stuckAt[target]
 return at~=nil and os.clock()-at<api.STUCK_TIME
@@ -9989,7 +10006,7 @@ local mine=rootOf(LocalPlayer)
 if mine then
 if parked[bomb]==nil then parked[bomb]=bomb.CanCollide end
 if bomb.CanCollide then bomb.CanCollide=false end
-bomb.CFrame=mine.CFrame*CFrame.new(0,-CARRY_DEPTH,0)
+bomb.CFrame=carrySpot(mine,bomb)
 end
 bomb.AssemblyLinearVelocity=Vector3.zero;bomb.AssemblyAngularVelocity=Vector3.zero
 end) end
@@ -10095,7 +10112,7 @@ end
 pcall(function()
 if parked[bomb]==nil then parked[bomb]=bomb.CanCollide end
 if bomb.CanCollide then bomb.CanCollide=false end
-bomb.CFrame=mine.CFrame*CFrame.new(0,-CARRY_DEPTH,0)
+bomb.CFrame=carrySpot(mine,bomb)
 bomb.AssemblyLinearVelocity=Vector3.zero
 bomb.AssemblyAngularVelocity=Vector3.zero
 end)
