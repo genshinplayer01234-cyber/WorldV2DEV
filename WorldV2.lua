@@ -240,7 +240,14 @@ end
 sample:Destroy()
 end
 end,"Part at line 58")
-mainTab = shared.CreateTab("World V2","/genshinplayer01234-cyber/WorldV2DEV/refs/heads/main/icon")
+do
+-- (if ODH can't download the tab icon it raises an error; the tab is then made without an icon, so
+-- World V2 still loads)
+local made,tab=pcall(shared.CreateTab,"World V2","/genshinplayer01234-cyber/WorldV2DEV/refs/heads/main/icon")
+if not made or tab==nil then made,tab=pcall(shared.CreateTab,"World V2") end
+if not made then error(tab,0) end
+mainTab=tab
+end
 local previousThrowableBridge=env.WorldV2ThrowableAimBridge
 if type(previousThrowableBridge)=="table" then previousThrowableBridge.handler=nil end
 local read = type(readfile) == "function" and readfile or env.readfile
