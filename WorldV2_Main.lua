@@ -9688,8 +9688,9 @@ end)()
 -- flung again straight away and you're told why, up to MAX_AGAIN times in a row)
 local out=(function()
 -- (the bomb's push: straight down with no spin (a spinning bomb throws people sideways, across the
--- map, more often), from on top of them.)
-local api={DOWN_SPEED=80,KNOCK_TIME=3,WATCH_TIME=5,MAX_AGAIN=3,SPIN=0,TOP_STILL=true,TOP_MOVING=true}
+-- map, more often), swept through their body. Resting it on top of them (TOP_STILL/TOP_MOVING) worked on
+-- a test account but not on real players in public servers: it sat on their heads and didn't move them)
+local api={DOWN_SPEED=80,KNOCK_TIME=3,WATCH_TIME=5,MAX_AGAIN=3,SPIN=0,TOP_STILL=false,TOP_MOVING=false}
 -- (the bomb is only yours while it's not far from you for too long: kept more than FAR studs from you
 -- for a few seconds, the game gives it to a player near it. So after FAR_BUDGET s away it's brought back
 -- under you for REST s, then the fling carries on. Tested 100 studs away: 2.5 s away / 0.6 s back lost
@@ -9772,8 +9773,9 @@ api.Again(target,"was thrown down but got stuck in the map")
 end)
 end
 -- (on some ground, like a thick map base with nothing under it, pushing straight down only bounces them
--- back up. Someone who was thrown down but got stuck is, for STUCK_TIME s, pushed the old way instead:
--- a spinning bomb sweeping their body, which throws them sideways off it)
+-- back up, and some players aren't moved at all by it. Someone who was thrown down but got stuck, or
+-- who couldn't be touched, is for STUCK_TIME s pushed the old way instead: a spinning bomb, which
+-- throws them sideways off it)
 api.STUCK_TIME=20
 function api.Sideways(target)
 local at=target and stuckAt[target]
@@ -9790,6 +9792,8 @@ return api.TOP_STILL
 end
 function api.Missed(target,info)
 if info.tired then return api.Again(target,nil) end
+-- (not even touched: the next tries on them use the spinning push too)
+if not info.knocked then stuckAt[target]=os.clock() end
 return api.Again(target,info.knocked and "was only knocked around in the map, not thrown out" or "couldn't be touched")
 end
 return api
@@ -9961,7 +9965,8 @@ local around=hop and Vector3.zero or Vector3.new(math.cos(spin)*0.5,0,math.sin(s
 local height=hop and HOP_RAISE+HOP_SWEEP*(1-2*progress) or (top+thickness/2)+((bottom+thickness/2)-(top+thickness/2))*progress
 local position=predicted+around+Vector3.new(0,height,0)
 if not ragdoll and not hop and out.Top(moving,target) then position=predicted+around+Vector3.new(0,top+thickness/2,0) end
-if followUntil or pinned then position=current+Vector3.new(0,top+thickness/2,0) end
+if followUntil then position=current+Vector3.new(0,top+thickness/2,0) end
+if pinned and not followUntil then position=current+around+Vector3.new(0,height,0) end
 if ragdoll then
 -- (ragdoll: the bomb goes exactly where Bomb Fling puts it, aim, prediction and all, but with far
 -- gentler forces: the fling's flat spin, a sideways tip and a push, at strength 25)
