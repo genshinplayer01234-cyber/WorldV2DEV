@@ -9462,6 +9462,8 @@ local totals={fling={tries=0,hits=0,movingTries=0,movingHits=0,time=0,movingTime
 ragdoll={tries=0,hits=0,movingTries=0,movingHits=0,time=0,movingTime=0,outs=0,outTime=0}}
 local perPlayer=setmetatable({},{__mode="k"})
 local recent={}
+-- (fling results for each way of placing the bomb on them, "head" or "sweep", see out.Place)
+local placeStats={}
 pcall(function()
 local text=C(SAVE_KEY,"")
 if type(text)~="string" then return end
@@ -9622,7 +9624,13 @@ if hit then
 total.hits=total.hits+1;total.time=total.time+took
 if moving then total.movingHits=total.movingHits+1;total.movingTime=total.movingTime+took end
 end
-local entry={name=attempt.target.Name,kind=attempt.kind,hit=hit,took=took,way=credited or "-",moving=moving}
+if attempt.place then
+local place=placeStats[attempt.place] or {tries=0,hits=0,outs=0}
+placeStats[attempt.place]=place
+place.tries=place.tries+1
+if hit then place.hits=place.hits+1 end
+end
+local entry={name=attempt.target.Name,kind=attempt.kind,hit=hit,took=took,way=credited or "-",moving=moving,place=attempt.place}
 table.insert(recent,1,entry)
 while #recent>15 do table.remove(recent) end
 save()
@@ -9640,6 +9648,7 @@ or (humanoid~=nil and humanoid.Health<=0) or root.Position.Y<fromY-200
 if out then
 entry.out=true;entry.outTime=os.clock()-attempt.started
 total.outs=total.outs+1;total.outTime=total.outTime+entry.outTime
+if attempt.place and placeStats[attempt.place] then placeStats[attempt.place].outs=placeStats[attempt.place].outs+1 end
 if credited and credited~="still" then recordOut(attempt,credited) end
 save()
 return
@@ -9667,6 +9676,10 @@ kind=="fling" and "Fling" or "Ragdoll",total.hits,total.tries,kind=="fling" and 
 total.movingHits,total.movingTries,
 total.hits>0 and total.time/total.hits or 0,total.movingHits>0 and total.movingTime/total.movingHits or 0,
 #ways>0 and table.concat(ways,", ") or "none yet")
+end
+for _,name in ipairs({"head","sweep"}) do
+local place=placeStats[name]
+if place then lines[#lines+1]=("Placement %s: %d/%d flung, %d out of the map"):format(name,place.hits,place.tries,place.outs) end
 end
 return lines
 end
@@ -9724,6 +9737,28 @@ exposure=0
 end
 local again=setmetatable({},{__mode="k"})
 local stuckAt=setmetatable({},{__mode="k"})
+-- (switching a Bomb Fling loop, auto, aura, bind button, keybind or click mode off calls Cancel: the fling
+-- going on stops and nobody started before is flung again)
+api.gen=0
+function api.Cancel() api.gen=api.gen+1;table.clear(again) end
+-- (where the bomb goes on them: "head", circling inside their head (tiny avatars included: the circle
+-- shrinks with their head), or "sweep", from the top of their body to their feet and back. nil takes
+-- turns, to compare them)
+api.PLACE=nil
+local turn=false
+function api.Place()
+if api.PLACE then return api.PLACE end
+turn=not turn
+return turn and "head" or "sweep"
+end
+function api.Head(target,base,current,spin,fallback)
+local head=target.Character and target.Character:FindFirstChild("Head")
+if not (head and head:IsA("BasePart")) then return fallback end
+local ok,offset,size=pcall(function() return head.Position.Y-current.Y,math.min(head.Size.X,head.Size.Z) end)
+if not ok then return fallback end
+local radius=math.min(0.5,size*0.4)
+return base+Vector3.new(math.cos(spin)*radius,offset,math.sin(spin)*radius)
+end
 local told=setmetatable({},{__mode="k"})
 function api.Down(targetRoot,startY,measured)
 local ok,fall,y=pcall(function() return targetRoot.AssemblyLinearVelocity.Y,targetRoot.Position.Y end)
@@ -9755,9 +9790,11 @@ if api.Requeue then api.Requeue(target) end
 return true
 end
 function api.Watch(target,info)
+local gen=api.gen
 task.spawn(function()
 local started,stopped=os.clock(),0
 while os.clock()-started<api.WATCH_TIME and alive and runtimeAlive do
+if api.gen~=gen then return end
 task.wait(0.1)
 local root=rootOf(target)
 if not root or not root.Parent or not aliveCharacter(target) then again[target]=nil;return end
@@ -9791,6 +9828,7 @@ if moving then return api.TOP_MOVING end
 return api.TOP_STILL
 end
 function api.Missed(target,info)
+if info.cancelled then return false end
 if info.tired then return api.Again(target,nil) end
 -- (not even touched: the next tries on them use the spinning push too)
 if not info.knocked then stuckAt[target]=os.clock() end
@@ -9868,6 +9906,8 @@ local limit=ragdoll and RAGDOLL_TIMEOUT or settings.duration
 local preempted=false
 local push=ragdoll and pushWay(targetRoot) or nil
 local attempt=aim.Begin(target,ragdoll)
+local gen=out.gen
+if not ragdoll then attempt.place=out.Place() end
 
 local stillFrames,frames=0,0
 local downSince=nil
@@ -9879,6 +9919,7 @@ local ok,err=pcall(function()
 while os.clock()-started<limit and alive and runtimeAlive do
 -- (a fling asked for while ragdolling goes first: ragdolling is cancelled)
 if ragdoll and #flingQueue>0 then preempted=true;break end
+if out.gen~=gen then preempted=true;break end
 askForReach()
 if not usable(bomb) then
 
@@ -9967,6 +10008,7 @@ local position=predicted+around+Vector3.new(0,height,0)
 if not ragdoll and not hop and out.Top(moving,target) then position=predicted+around+Vector3.new(0,top+thickness/2,0) end
 if followUntil then position=current+Vector3.new(0,top+thickness/2,0) end
 if pinned and not followUntil then position=current+around+Vector3.new(0,height,0) end
+if attempt.place=="head" then position=out.Head(target,pinned and current or predicted,current,spin,position) end
 if ragdoll then
 -- (ragdoll: the bomb goes exactly where Bomb Fling puts it, aim, prediction and all, but with far
 -- gentler forces: the fling's flat spin, a sideways tip and a push, at strength 25)
@@ -10033,7 +10075,7 @@ end)
 end
 if not ok then stats.lastError=tostring(err) end
 if hit then stats.hits=stats.hits+1 end
-return hit,preempted,{knocked=knocked,startY=startY,tired=tired}
+return hit,preempted,{knocked=knocked,startY=startY,tired=tired,cancelled=out.gen~=gen}
 end
 -- (the bomb is kept under you only while Bomb Fling is in use: a fling, a loop, the aura or an auto
 -- fling, or 20 s after your last fling; then it's set back down beside you. During a Bomb Jump or Gold
@@ -10286,7 +10328,26 @@ if delay>0 then task.wait(delay) else task.wait() end
 end
 end)
 end
-local function stopLoop(key) loops[key]=nil end
+-- (switching a loop, auto, aura, bind button, keybind or click mode off stops its flinging straight
+-- away: what's queued is dropped, the fling going on is cut short and nobody is flung again after)
+local function stopLoop(key)
+loops[key]=nil
+local dropped={}
+for _,plr in ipairs(flingQueue) do dropped[#dropped+1]=plr end
+table.clear(flingQueue)
+for _,plr in ipairs(dropped) do
+local waiting=passOf[plr];passOf[plr]=nil
+for _,report in ipairs(waiting or {}) do pcall(report,false) end
+end
+table.clear(dropped)
+for _,plr in ipairs(ragdollQueue) do dropped[#dropped+1]=plr end
+table.clear(ragdollQueue)
+for _,plr in ipairs(dropped) do
+local waiting=ragdollPassOf[plr];ragdollPassOf[plr]=nil
+for _,report in ipairs(waiting or {}) do pcall(report,false,true) end
+end
+out.Cancel()
+end
 runtime.ThrownBomb=ThrownBomb
 runtime.BombFling={Fling=fling,Ragdoll=ragdoll,GetBomb=getBomb,
 OwnBomb=function() return ownBomb and usable(ownBomb) and ownBomb or nil end,
@@ -10411,7 +10472,7 @@ notify(table.concat(lines,"\n"),3)
 print("[World V2] Bomb Fling / Ragdoll stats")
 for _,line in ipairs(lines) do print("  "..line) end
 for _,entry in ipairs(aim.Recent()) do
-print(("  %s %s: %s in %.1f s, way %s%s"):format(entry.kind,entry.name,entry.hit and "hit" or "missed",entry.took,entry.way,entry.moving and " (moving)" or ""))
+print(("  %s %s: %s in %.1f s, way %s%s"):format(entry.kind,entry.name,entry.hit and "hit" or "missed",entry.took,entry.way,entry.moving and " (moving)" or "")..(entry.place and (", "..entry.place) or "")..(entry.out and ", out of the map" or ""))
 end
 end)
 local function autoFling(name,key,finder)
@@ -10486,7 +10547,7 @@ end
 toggle("Click Bomb Fling","bombFlingClick",function(value)
 for _,connection in ipairs(clickConnections) do connection:Disconnect() end
 table.clear(clickConnections)
-if not value then return end
+if not value then stopLoop("click");return end
 local function chosen(plr)
 if plr and plr~=LocalPlayer and not isWhitelisted(plr) then
 notify("Bomb Fling: flinging "..plr.DisplayName,3)
@@ -10665,7 +10726,7 @@ autoRagdoll("Murderer","bombRagdollAutoMurderer",findRagdollMurderer)
 rtoggle("Click Bomb Ragdoll","bombRagdollClick",function(value)
 for _,connection in ipairs(ragdollClickConnections) do connection:Disconnect() end
 table.clear(ragdollClickConnections)
-if not value then return end
+if not value then stopLoop("ragdollClick");return end
 local function chosen(plr)
 if plr and plr~=LocalPlayer and not ragdollSpared(plr) then
 notify("Bomb Ragdoll: ragdolling "..plr.DisplayName,3)
@@ -10720,7 +10781,7 @@ ragdollLit(spec,false)
 return true
 end
 local function ragdollOnce(spec,title)
-if cancelRagdollRun(spec) then notify("Bomb Ragdoll: "..title.." cancelled",3);return end
+if cancelRagdollRun(spec) then stopLoop(spec.id);notify("Bomb Ragdoll: "..title.." cancelled",3);return end
 local list={}
 for _,plr in ipairs(spec.find()) do
 if plr.Parent and aliveCharacter(plr) and not ragdollSpared(plr) and not table.find(list,plr) then list[#list+1]=plr end
@@ -10772,7 +10833,7 @@ local function create()
 BindableButtons.AddBButton(spec.id,spec.text,function()
 if not ragdollRuns[spec.id] then ragdollOnce(spec,title) end
 end,function()
-if cancelRagdollRun(spec) then notify("Bomb Ragdoll: "..title.." cancelled",3) end
+if cancelRagdollRun(spec) then stopLoop(spec.id);notify("Bomb Ragdoll: "..title.." cancelled",3) end
 end,function(position)
 saveStoredPosition(spec.key.."ButtonPosition",position)
 end)
@@ -10781,7 +10842,7 @@ BindableButtons:SetLocked(spec.id,lockBindButtonPos)
 bindSize(spec.id,size)
 end
 rtoggle("Enable "..spec.label.." Button",spec.key.."Enabled",function(value)
-if value then create() else cancelRagdollRun(spec);BindableButtons:DeleteBButton(spec.id) end
+if value then create() else cancelRagdollRun(spec);stopLoop(spec.id);BindableButtons:DeleteBButton(spec.id) end
 end)
 rsection:AddSlider(spec.label.." Button Size",5,25,size*100,function(value)
 size=math.clamp(tonumber(value) or 11,5,25)/100
