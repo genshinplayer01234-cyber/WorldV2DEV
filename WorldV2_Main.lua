@@ -4535,13 +4535,18 @@ SetCfg("shootHideText",v)
 update()
 end)
 section:AddButton("Reset Shoot Murderer Button Position",resetShootMurdererPosition)
+-- (its listeners are removed when World V2 unloads, so a reload doesn't leave old ones running)
+local listeners={}
 task.defer(function()
 task.wait(0.5)
+if not runtimeAlive then return end
 local found=findButton(); if found then bind(found) end
 for _,root in ipairs(roots()) do
 pcall(function()
-root.DescendantAdded:Connect(function(item)
-local trade=env.WorldV2Runtime.Trade
+listeners[#listeners+1]=root.DescendantAdded:Connect(function(item)
+if not runtimeAlive then return end
+local runtime=env.WorldV2Runtime
+local trade=runtime and runtime.Trade
 if trade and trade.active then return end
 if isTarget(item) then task.defer(function() bind(item) end) end
 end)
@@ -4553,6 +4558,10 @@ customToggle:Set(false); keepToggle:Set(false); dragToggle:Set(false); textToggl
 customEnabled=false; keepGun=false; allowDrag=false; hideText=false
 buttonWidth=100; buttonHeight=40; buttonPos=UDim2.new(0.5,0,0.5,0)
 stopKeeper(); restoreOriginal()
+if not runtimeAlive then
+for _,connection in ipairs(listeners) do pcall(function() connection:Disconnect() end) end
+table.clear(listeners)
+end
 end)
 end,"Section \"Shoot Murderer Button\"")
 ;w2Section(function()
