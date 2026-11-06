@@ -9375,6 +9375,9 @@ if now-cache.at>0.2 then cache.at=now;cache.body=decide(mine,bomb) end
 if cache.body then
 local character=LocalPlayer.Character
 local torso=character and (character:FindFirstChild("UpperTorso") or character:FindFirstChild("Torso"))
+-- (hidden from raycasts too: your character's floor and climb checks found it inside you and walked
+-- or climbed on it, pushing you around)
+if not bomb.CanCollide and bomb.CanQuery then bomb.CanQuery=false end
 return (torso or mine).CFrame*FLAT
 end
 return mine.CFrame*CFrame.new(0,-cache.depth,0)
@@ -10142,6 +10145,7 @@ local y=hit and hit.Position.Y+bomb.Size.Y/2+0.1 or mine.Position.Y
 bomb.CFrame=CFrame.new(spot.X,y,spot.Z)
 end
 bomb.CanCollide=original
+bomb.CanQuery=true
 bomb.AssemblyLinearVelocity=Vector3.zero
 bomb.AssemblyAngularVelocity=Vector3.zero
 end)
@@ -10152,15 +10156,15 @@ if flinging or not alive or not runtimeAlive or not bomb or bomb~=ownBomb then c
 if not usable(bomb) then verified,carryTest=nil,nil;return end
 if jumpedRecently() then
 -- (its collision is given back where it is, so the bomb the jump threw doesn't fall through the floor)
--- (one still kept under you, in the ground, is set down beside you first)
+-- (one still kept under you, in the ground or in your body, is set down beside you first)
 local mine=rootOf(LocalPlayer)
 local ok,below=pcall(function() return mine and mine.Position.Y-bomb.Position.Y end)
-if ok and below and below>CARRY_DEPTH-1.5 and parked[bomb]~=nil then
+if ok and below and parked[bomb]~=nil then
 setDown(bomb)
 else
 local original=parked[bomb]
 parked[bomb]=nil
-if original~=nil then pcall(function() bomb.CanCollide=original end) end
+if original~=nil then pcall(function() bomb.CanCollide=original;bomb.CanQuery=true end) end
 end
 verified,carryTest,lastUse=nil,nil,-math.huge
 return
