@@ -8695,6 +8695,7 @@ local settings={
 duration=math.clamp(tonumber(C("bombFlingDuration",MIN_DURATION)) or MIN_DURATION,MIN_DURATION,MAX_DURATION),
 auraDistance=math.clamp(tonumber(C("bombFlingAuraStuds",15)) or 15,5,50),
 loopDelay=math.clamp(tonumber(C("bombFlingLoopDelay",3)) or 3,0,6),
+hideInBody=C("bombHideInBody",false)==true,
 }
 local selectedPlayers={}
 -- (Bomb Ragdoll: same bomb, much weaker push that only knocks people over; its own settings, players and
@@ -9328,21 +9329,55 @@ local ok,result=pcall(function() return workspace:Raycast(position+Vector3.new(0
 return ok and result and result.Position.Y or nil
 end
 local CARRY_DEPTH=5
--- (the bomb is kept CARRY_BELOW studs under whatever you're standing on (ground, a crate, a platform), at
--- least CARRY_DEPTH under you: a fixed depth left it out in the open when you stood on something, and the
--- game then gave it to a nearby player)
+-- (where the bomb is kept while it isn't flinging. Under the ground: CARRY_BELOW studs under whatever
+-- you stand on (ground, a crate, a platform), at least CARRY_DEPTH under you. In your body: inside your
+-- torso, its big flat side facing front and back, where it's seen least. It goes in your body while
+-- you're in the air (a jump shows it), on a platform with room under it (people below would see it),
+-- when other players are within NEAR studs (so you're always nearest it and it stays yours), or always
+-- with Keep Bomb In Your Body on)
 local carrySpot=(function()
-local CARRY_BELOW=4
-local carryRay=RaycastParams.new()
-carryRay.FilterType=Enum.RaycastFilterType.Exclude
-return function(mine,bomb)
-local depth=CARRY_DEPTH
+local CARRY_BELOW,NEAR=4,14
+local FLAT=CFrame.Angles(math.pi/2,0,0)
+local ray=RaycastParams.new()
+ray.FilterType=Enum.RaycastFilterType.Exclude
+local cache={at=-math.huge,body=false,depth=CARRY_DEPTH}
+local function decide(mine,bomb)
+local character=LocalPlayer.Character
+local humanoid=character and character:FindFirstChildOfClass("Humanoid")
+if settings.hideInBody then return true end
+local airborne=false
+pcall(function() airborne=humanoid.FloorMaterial==Enum.Material.Air end)
+if airborne then return true end
+local floor=nil
 pcall(function()
-carryRay.FilterDescendantsInstances={LocalPlayer.Character,bomb}
-local hit=workspace:Raycast(mine.Position,Vector3.new(0,-12,0),carryRay)
-if hit then depth=math.max(depth,mine.Position.Y-hit.Position.Y+CARRY_BELOW) end
+ray.FilterDescendantsInstances={character,bomb}
+floor=workspace:Raycast(mine.Position,Vector3.new(0,-12,0),ray)
 end)
-return mine.CFrame*CFrame.new(0,-depth,0)
+if floor then
+local under=nil
+pcall(function() under=workspace:Raycast(floor.Position-Vector3.new(0,0.05,0),Vector3.new(0,-40,0),ray) end)
+if under and floor.Position.Y-under.Position.Y>5 then return true end
+cache.depth=math.max(CARRY_DEPTH,mine.Position.Y-floor.Position.Y+CARRY_BELOW)
+else
+cache.depth=CARRY_DEPTH
+end
+for _,plr in ipairs(Players:GetPlayers()) do
+if plr~=LocalPlayer then
+local root=rootOf(plr)
+if root and (root.Position-mine.Position).Magnitude<NEAR then return true end
+end
+end
+return false
+end
+return function(mine,bomb)
+local now=os.clock()
+if now-cache.at>0.2 then cache.at=now;cache.body=decide(mine,bomb) end
+if cache.body then
+local character=LocalPlayer.Character
+local torso=character and (character:FindFirstChild("UpperTorso") or character:FindFirstChild("Torso"))
+return (torso or mine).CFrame*FLAT
+end
+return mine.CFrame*CFrame.new(0,-cache.depth,0)
 end
 end)()
 local verified=nil
@@ -10463,6 +10498,7 @@ end)
 section:AddSlider("Bomb Fling Duration",MIN_DURATION,MAX_DURATION,settings.duration,function(value)
 settings.duration=math.clamp(tonumber(value) or MIN_DURATION,MIN_DURATION,MAX_DURATION);SetCfg("bombFlingDuration",settings.duration)
 end)
+toggle("Keep Bomb In Your Body","bombHideInBody",function(value) settings.hideInBody=value end)
 section:AddLabel(("Tougher players are given up to %d s to get flung"):format(HOP_TIME))
 -- (what has worked so far, for Bomb Fling and Bomb Ragdoll: hits, time to fling and each aiming way;
 -- the last attempts are printed to the console, F9)
