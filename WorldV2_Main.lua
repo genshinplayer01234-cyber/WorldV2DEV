@@ -9766,6 +9766,10 @@ if exposure<api.FAR_BUDGET then return end
 while os.clock()-lastEnd<api.REST and alive and runtimeAlive and usable(bomb) do
 local mine=rootOf(LocalPlayer)
 if mine then pcall(function()
+-- (its collision goes off first, like when it's kept: a new bomb (after a respawn) still has it, and
+-- held in your body it pushed you along the ground for over 15 studs)
+if parked[bomb]==nil then parked[bomb]=bomb.CanCollide end
+if bomb.CanCollide then bomb.CanCollide=false end
 bomb.CFrame=carrySpot(mine,bomb)
 bomb.AssemblyLinearVelocity=Vector3.zero;bomb.AssemblyAngularVelocity=Vector3.zero
 end) end
