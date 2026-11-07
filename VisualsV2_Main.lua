@@ -11221,6 +11221,7 @@ if not tagged then targets[1]=root end
 for index,part in ipairs(targets) do
 local decal=part:IsA("Decal")
 targets[index]={object=part,decal=decal,tagged=tagged,original=decal and part.Color3 or part.Color,
+texture=decal and part.Texture or nil,
 mesh=not tagged and not decal and part:FindFirstChildWhichIsA("SpecialMesh") or nil}
 end
 local light=0
@@ -11233,6 +11234,9 @@ return targets
 end
 local LIGHT_COLORS={Color3.new(0,0.74,0.70),Color3.new(0.92,0,0),Color3.new(0.94,0.87,0),Color3.new(0.86,0,0.86),Color3.new(0.11,0.9,0)}
 local WHITE=Color3.new(1,1,1)
+-- (the game's two chroma modes, switched by /chromatoggle: a chroma decal shows its own chroma texture
+-- tinted with a cycling color, or, toggled, the rainbow gradient texture untinted)
+local CHROMA_GRADIENT="18363568406"
 -- (the game's /chromatoggle turns chroma colors on and off for real chroma weapons (its ChromaScript gets a
 -- ToggleChromas event); the visual chroma weapons follow the same switch: off, they show their plain
 -- colors)
@@ -11246,6 +11250,11 @@ local visuals=scripts and scripts:WaitForChild("WeaponVisuals",30)
 local chroma=visuals and visuals:WaitForChild("ChromaScript",30)
 local toggle=chroma and chroma:WaitForChild("ToggleChromas",30)
 if not (toggle and toggle:IsA("BindableEvent")) or not runtimeAlive then return end
+-- (which mode the game is in: a real chroma decal showing the rainbow gradient means it's toggled)
+local tagged=game:GetService("CollectionService"):GetTagged("ChromaDecal")
+for _,decal in ipairs(tagged) do
+if decal:IsA("Decal") and decal.Texture:find(CHROMA_GRADIENT,1,true) then runtime.ChromaOff=true;break end
+end
 runtime.ChromaToggleConnection=toggle.Event:Connect(function() runtime.ChromaOff=not runtime.ChromaOff end)
 RootMaid:GiveTask(function() pcall(function() runtime.ChromaToggleConnection:Disconnect() end) end)
 end)
@@ -11258,16 +11267,14 @@ local step=math.floor(os.clock()/0.5)
 local vertex
 for _,target in ipairs(state.chromaTargets) do
 local part,mesh=target.object,target.mesh
-if off then
--- (/chromatoggle off: like the game, a chroma decal shows untinted and a chroma part goes plain grey;
--- the recorded colors are just wherever the cycle was when it was captured)
-if target.decal then part.Color3=WHITE
-elseif target.light then part.Color=target.original
-elseif target.tagged then part.Color=Color3.fromRGB(163,162,165)
-else part.Color=target.original end
-if mesh then mesh.VertexColor=Vector3.new(1,1,1) end
+if off and target.decal then
+-- (/chromatoggle: like the game, the chroma decal shows the rainbow gradient, untinted)
+if not part.Texture:find(CHROMA_GRADIENT,1,true) then part.Texture="rbxassetid://"..CHROMA_GRADIENT end
+part.Color3=WHITE
 elseif target.light then part.Color=LIGHT_COLORS[(step+target.light)%#LIGHT_COLORS+1]
-elseif target.decal then part.Color3=color
+elseif target.decal then
+if target.texture and part.Texture~=target.texture then part.Texture=target.texture end
+part.Color3=color
 elseif mesh then
 if part.Color~=WHITE then part.Color=WHITE end
 vertex=vertex or Vector3.new(color.R,color.G,color.B)
