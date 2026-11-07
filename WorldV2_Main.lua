@@ -9777,6 +9777,12 @@ RunService.Heartbeat:Wait()
 end
 exposure=0
 end
+-- (the game deletes a bomb that goes below the map's fall limit (FallenPartsDestroyHeight; Anti Void
+-- only turns that off on your screen, not the server's), and then there's no new one for 22 s. In a
+-- public server bombs were lost this way chasing players far under the map, 7 times in 10 min. So
+-- the bomb never goes within VOID_MARGIN studs of it: someone that low is already out of the map)
+api.VOID_MARGIN=60
+function api.VoidY() return (fallLimit() or -500)+api.VOID_MARGIN end
 local again=setmetatable({},{__mode="k"})
 local stuckAt=setmetatable({},{__mode="k"})
 local untouched=setmetatable({},{__mode="k"})
@@ -9904,6 +9910,9 @@ if flying(velocity) or flying(seen) then
 
 return false,"already flung"
 end
+if targetRoot.Position.Y<out.VoidY() then
+return false,"is under the map"
+end
 end
 local bomb,reason=getBomb()
 if bomb and bomb==verified and not pushYours(bomb) then
@@ -9992,6 +10001,7 @@ if targetRoot.Parent and usable(bomb) then
 local now=os.clock()
 if out.Expose(bomb,now) then tired=true;break end
 local current=targetRoot.Position
+if not ragdoll and current.Y<out.VoidY() then hit=true;break end
 local measured=measure(track,current,now)
 local down=knockedOver(target,targetRoot)
 if down and ragdoll then downSince=downSince or now else downSince=nil end
