@@ -10649,7 +10649,10 @@ if entry.kind=="Knife" and attachmentGrip and attachmentGrip.Position.Magnitude<
 local _,angle=attachmentGrip:ToAxisAngle()
 if math.abs(angle)<=math.rad(15) then attachmentGrip=nil end
 end
-local holsterAttachment=attachment or root:FindFirstChild("Attachment")
+-- (the game hangs a weapon on your side from its "Attachment" (its holster constraint's attachment); only a
+-- weapon without one hangs from its CustomAttachment, e.g. Chroma Beachy)
+local plainAttachment=root:FindFirstChild("Attachment")
+local holsterAttachment=plainAttachment and plainAttachment:IsA("Attachment") and plainAttachment or attachment
 local holsterGrip=holsterAttachment and holsterAttachment:IsA("Attachment") and holsterAttachment.CFrame or CFrame.new()
 local texture=assetId(modelData.textureid or modelData.texture or data.textureid or data.texture)
 if texture then
@@ -11256,8 +11259,12 @@ local vertex
 for _,target in ipairs(state.chromaTargets) do
 local part,mesh=target.object,target.mesh
 if off then
--- (/chromatoggle off: every chroma part shows its own plain color again)
-if target.decal then part.Color3=target.original else part.Color=target.original end
+-- (/chromatoggle off: like the game, a chroma decal shows untinted and a chroma part goes plain grey;
+-- the recorded colors are just wherever the cycle was when it was captured)
+if target.decal then part.Color3=WHITE
+elseif target.light then part.Color=target.original
+elseif target.tagged then part.Color=Color3.fromRGB(163,162,165)
+else part.Color=target.original end
 if mesh then mesh.VertexColor=Vector3.new(1,1,1) end
 elseif target.light then part.Color=LIGHT_COLORS[(step+target.light)%#LIGHT_COLORS+1]
 elseif target.decal then part.Color3=color
@@ -11514,7 +11521,16 @@ end
 local function nativeHolsterGrip(object)
 local root=object and visualRoot(object)
 if not root then return CFrame.new() end
-local attachment=gripAttachment(root) or root:FindFirstChild("Attachment")
+-- (the attachment the game's holster constraint actually hangs the real weapon from)
+for _,constraint in ipairs(object:GetDescendants()) do
+if constraint:IsA("RigidConstraint") then
+for _,attachment in ipairs({constraint.Attachment1,constraint.Attachment0}) do
+if attachment and attachment:IsDescendantOf(object) then return attachment.CFrame end
+end
+end
+end
+local plain=root:FindFirstChild("Attachment")
+local attachment=(plain and plain:IsA("Attachment") and plain) or gripAttachment(root)
 return attachment and attachment:IsA("Attachment") and attachment.CFrame or CFrame.new()
 end
 local function refreshHolsters()
@@ -11530,6 +11546,8 @@ for _,tool in ipairs(character:GetChildren()) do
 if tool:IsA("Tool") and actualKind(tool)==kind then equipped=true;break end
 end
 end
+-- (the game keeps showing the real weapon on your side while you hold it, so the fake one stays too)
+equipped=false
 if not alive or not runtimeAlive or equipped or not entry or not body or not body:IsA("BasePart")
 or not humanoid or humanoid.Health<=0 then
 clearHolster(kind)
@@ -11829,6 +11847,7 @@ thrown[object]=state
 model.Parent=handle
 updateChroma(state)
 hideOriginals(object,state)
+if object:IsA("BasePart") then hideObject(object,state,"LocalTransparencyModifier",1) end
 for _,record in pairs(state.originals) do
 if record.property=="LocalTransparencyModifier" then record.value=0 end
 end
