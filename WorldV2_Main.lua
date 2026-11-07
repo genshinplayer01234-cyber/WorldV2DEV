@@ -5335,8 +5335,8 @@ local section=mainTab:AddSection("Wall Glitch","Utilities")
 --    everyone sees it: as your own emote if it's in your emotes, otherwise from its animation
 -- 4. 0.1 s after it starts: shiftlock goes on and you walk forward, both at once, for 0.2 s (shiftlock
 --    turns you to the camera, so you snap back round to the wall as you walk into it)
--- 5. shiftlock is put back how it was, the emote ends, and you keep walking ahead for 0.5 s out the
---    other side; it's ready again 2 s later
+-- 5. shiftlock is put back how it was, the emote ends, and you keep walking ahead out the other side,
+--    stopping as soon as you're clear of the wall (0.5 s at most); it's ready again 2 s later
 local EMOTE_ID=114537898785444
 local EMOTE_NAME="WALL HACK💀"
 -- (all of it twice as fast as the last version; after the glitch you keep walking forward on your own
@@ -5559,12 +5559,27 @@ if LocalPlayer.Character~=humanoid.Parent or humanoid.Health<=0 then return end
 local wasLocked=shiftlocked()
 local forward=-normal
 faceWall(root,normal)
-unghost=ghost(wallParts(root,normal))
+local through=wallParts(root,normal)
+unghost=ghost(through)
 if not wasLocked then pressShift() end
 local walkUntil=os.clock()+WALK_TIME+WALK_AHEAD
+-- (once you've been in the wall and your body is clear of it, on the far side, the walk stops there
+-- instead of carrying on for the rest of WALK_AHEAD)
+local inWall,startedAt=false,root.Position
+local overlap=OverlapParams.new()
+overlap.FilterType=Enum.RaycastFilterType.Include
+overlap.FilterDescendantsInstances=through
 pcall(function()
 RunService:BindToRenderStep(RENDER_NAME,Enum.RenderPriority.Character.Value+1,function()
-if os.clock()<walkUntil and humanoid.Parent then humanoid:Move(forward,false) end
+if os.clock()>=walkUntil or not humanoid.Parent then return end
+if #through>0 and root.Parent then
+local touching=#workspace:GetPartBoundsInBox(root.CFrame*CFrame.new(0,-0.5,0),Vector3.new(2.2,5,1.6),overlap)>0
+if touching then inWall=true
+elseif inWall and (root.Position-startedAt):Dot(forward)>0.5 then
+walkUntil=0;humanoid:Move(Vector3.zero,false);return
+end
+end
+humanoid:Move(forward,false)
 end)
 end)
 task.wait(WALK_TIME)
@@ -5572,7 +5587,8 @@ task.wait(WALK_TIME)
 if not wasLocked and shiftlocked() then pressShift() end
 pcall(function() humanoid.AutoRotate=true end)
 if typeof(track)=="Instance" then task.delay(0.1,function() pcall(function() track:Stop(0.2) end) end) end
-task.wait(WALK_AHEAD)
+local aheadUntil=os.clock()+WALK_AHEAD
+while os.clock()<aheadUntil and os.clock()<walkUntil do task.wait() end
 pcall(function() RunService:UnbindFromRenderStep(RENDER_NAME) end)
 pcall(function() humanoid:Move(Vector3.zero,false) end)
 if unghost then unghost();unghost=nil end
