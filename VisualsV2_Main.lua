@@ -11218,10 +11218,12 @@ end
 -- through the game's five light colors)
 local tagged=#targets>0
 if not tagged then targets[1]=root end
+-- (Chroma Bauble is the one exception to the gradient: toggled, it turns a light pastel pink)
+local pastel=tostring(model:GetAttribute("WeaponID") or ""):lower():find("bauble",1,true)~=nil
 for index,part in ipairs(targets) do
 local decal=part:IsA("Decal")
 targets[index]={object=part,decal=decal,tagged=tagged,original=decal and part.Color3 or part.Color,
-texture=decal and part.Texture or nil,
+texture=decal and part.Texture or nil,pastel=pastel,
 mesh=not tagged and not decal and part:FindFirstChildWhichIsA("SpecialMesh") or nil}
 end
 local light=0
@@ -11267,7 +11269,10 @@ local step=math.floor(os.clock()/0.5)
 local vertex
 for _,target in ipairs(state.chromaTargets) do
 local part,mesh=target.object,target.mesh
-if off and target.decal then
+if off and target.decal and target.pastel then
+if target.texture and part.Texture~=target.texture then part.Texture=target.texture end
+part.Color3=Color3.fromRGB(255,200,225)
+elseif off and target.decal then
 -- (/chromatoggle: like the game, the chroma decal shows the rainbow gradient, untinted)
 if not part.Texture:find(CHROMA_GRADIENT,1,true) then part.Texture="rbxassetid://"..CHROMA_GRADIENT end
 part.Color3=WHITE
