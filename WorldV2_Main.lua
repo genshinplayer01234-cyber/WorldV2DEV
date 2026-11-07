@@ -9779,6 +9779,7 @@ exposure=0
 end
 local again=setmetatable({},{__mode="k"})
 local stuckAt=setmetatable({},{__mode="k"})
+local untouched=setmetatable({},{__mode="k"})
 -- (switching a Bomb Fling loop, auto, aura, bind button, keybind or click mode off calls Cancel: the fling
 -- going on stops and nobody started before is flung again)
 api.gen=0
@@ -9873,8 +9874,19 @@ end
 function api.Missed(target,info)
 if info.cancelled then return false end
 if info.tired then return api.Again(target,nil) end
--- (not even touched: the next tries on them use the spinning push too)
-if not info.knocked then stuckAt[target]=os.clock() end
+-- (not even touched: the next tries on them use the spinning push too. Not touched twice within 30 s
+-- (an anti-fling, most likely): they're left for REST_TIME s instead of tried again. In public, such
+-- players took up to 7% of all tries and were almost never moved)
+if not info.knocked then
+stuckAt[target]=os.clock()
+local last=untouched[target]
+if last and os.clock()-last<30 then
+untouched[target]=nil
+restingUntil[target]=os.clock()+REST_TIME
+return false
+end
+untouched[target]=os.clock()
+end
 return api.Again(target,info.knocked and "was only knocked around in the map, not thrown out" or "couldn't be touched")
 end
 return api
