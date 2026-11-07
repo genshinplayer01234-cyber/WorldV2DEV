@@ -10697,7 +10697,8 @@ end
 end
 if entry.kind=="Knife" then
 local key=compact(entry.id)..compact(entry.name)
-if (key:find("scythe",1,true) or compact(entry.id)=="icewing") and not clone:GetAttribute("VisualsV2_RecordedGripOffset") then
+-- (every scythe is held exactly like Batwing (the "Scythe" item): the same grip, whatever else it has)
+if key:find("scythe",1,true) or compact(entry.id)=="icewing" then
 grip=KNOWN_GRIPS["305826272"].grip;useToolGrip=true
 end
 end
