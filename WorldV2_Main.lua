@@ -7119,7 +7119,7 @@ end)
 controls[#controls+1]=controller
 return controller
 end
-section:AddParagraph("Auto-farm Helper","Made to go with Overdrive Hub's Auto-farm.\n\nRequired: in ODH's Autofarm tab, set it to return to the lobby, and in its Autofarm section switch on only the Autofarm toggle, nothing else. (Except the Left Tab of Autofarm).\n\nAuto-Shoot Murderer needs Piercer Bullet on in ODH's Combat tab. Exclusive wall check must be off aswell.\n\nSwitch on an anti fling in Antis (W2 Enable IY Anti Fling, or Low-End Device Anti-Fling) while you auto-farm, so nobody can fling you. For long AFK farms also switch on True Anti AFK and True Anti Void.")
+section:AddParagraph("Auto-farm Helper","Made to go with Overdrive Hub's Auto-farm.\n\nRequired: in ODH's Autofarm tab, set it to return to the lobby, and in its Autofarm section switch on only the Autofarm toggle, nothing else. (Except the Right Tab of Autofarm).\n\nAuto-Shoot Murderer needs Piercer Bullet on in ODH's Combat tab. Exclusive wall check must be off aswell.\n\nSwitch on an anti fling in Antis (W2 Enable IY Anti Fling, or Low-End Device Anti-Fling) while you auto-farm, so nobody can fling you. For long AFK farms also switch on True Anti AFK and True Anti Void.")
 toggle("Disable 3D Rendering","w2FarmNoRender",function(value) setRendering(not value) end)
 toggle("Auto Vote Smallest Map","w2AutoVoteSmallest",function(value)
 state.vote=value
