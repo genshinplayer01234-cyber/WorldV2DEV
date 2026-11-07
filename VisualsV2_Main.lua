@@ -10697,11 +10697,18 @@ end
 end
 if entry.kind=="Knife" then
 local key=compact(entry.id)..compact(entry.name)
--- (scythes without a grip of their own are held like Batwing (the "Scythe" item), as before; Ancient
--- Gingerscythe and Ancient Synthwave (and its chroma) always are)
-local ancient=compact(entry.id)=="gingerscytheancient" or compact(entry.id)=="synthwaveancient"
-or compact(entry.id)=="synthwaveancientchroma"
-if ancient or ((key:find("scythe",1,true) or compact(entry.id)=="icewing") and not clone:GetAttribute("VisualsV2_RecordedGripOffset")) then
+-- (scythes without a grip of their own are held like Batwing (the "Scythe" item), as before. Ancient
+-- Synthwave (and its chroma) is held exactly like Batwing; Ancient Gingerscythe and the Blue, Bronze, Gold
+-- and Silver Synthwave like Batwing with the knife a little lower in the hand; Rare, Legendary and Godly
+-- Gingerscythe the way the other Synthwaves are (their own fitted grip, not Batwing's))
+local batwingStyle=({synthwaveancient="same",synthwaveancientchroma="same",gingerscytheancient="lower",
+synthwaveblue="lower",synthwavebronze="lower",synthwavegold="lower",synthwavesilver="lower"})[compact(entry.id)]
+local synthwaveStyle=({gingerscythe=true,gingerscythelegendary=true,gingerscythegodly=true})[compact(entry.id)]
+if batwingStyle then
+grip=KNOWN_GRIPS["305826272"].grip;useToolGrip=true
+if batwingStyle=="lower" then grip=grip+Vector3.new(0,0.25,0) end
+elseif not synthwaveStyle and (key:find("scythe",1,true) or compact(entry.id)=="icewing")
+and not clone:GetAttribute("VisualsV2_RecordedGripOffset") then
 grip=KNOWN_GRIPS["305826272"].grip;useToolGrip=true
 end
 end
@@ -11275,7 +11282,7 @@ for _,target in ipairs(state.chromaTargets) do
 local part,mesh=target.object,target.mesh
 if off and target.decal and target.pastel then
 if target.texture and part.Texture~=target.texture then part.Texture=target.texture end
-part.Color3=Color3.fromRGB(255,165,205)
+part.Color3=Color3.fromRGB(255,180,195)
 elseif off and target.decal then
 -- (/chromatoggle: like the game, the chroma decal shows the rainbow gradient, untinted)
 if not part.Texture:find(CHROMA_GRADIENT,1,true) then part.Texture="rbxassetid://"..CHROMA_GRADIENT end
@@ -11592,7 +11599,10 @@ local belt=character:FindFirstChild(kind.."Belt",true)
 if belt and (not belt:IsA("Attachment") or not belt.Parent or not belt.Parent:IsA("BasePart")) then belt=nil end
 local anchor=originalRoot or belt and belt.Parent or body
 local side=kind=="Gun" and 1 or -1
-local base=originalRoot and originalRoot.CFrame*nativeMount*template.holsterGrip:Inverse()
+-- (Beachy and Chroma Beachy hang exactly where the game hangs them: their recorded place from the belt)
+local fromBelt=({Beachy=CFrame.new(-8.82057e-07,3.11925e-06,-5.20564e-06,1,1.86146e-10,-2.23385e-09,1.86146e-10,1,-1.12058e-08,-2.23385e-09,-1.12058e-08,1),BeachyChroma=CFrame.new(-1.08433e-05,0.343334,-0.181437,1,-2.04622e-09,-3.79403e-10,1.86146e-10,0.997998,0.0632424,-2.23385e-09,-0.0632424,0.997998)})[entry.id]
+local base=fromBelt and belt and belt.WorldCFrame*fromBelt
+or originalRoot and originalRoot.CFrame*nativeMount*template.holsterGrip:Inverse()
 or belt and belt.Parent.CFrame*belt.CFrame*template.holsterGrip:Inverse() or body.CFrame
 *CFrame.new(side*(body.Size.X*0.5+0.15),-body.Size.Y*0.4,0.15)
 *CFrame.Angles(0,0,math.rad(side*35))*template.holsterGrip:Inverse()
