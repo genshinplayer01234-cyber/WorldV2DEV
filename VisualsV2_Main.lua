@@ -8637,7 +8637,7 @@ local raw={}
 local scopeMeshes={["15374602183"]=true,["15374679651"]=true,["79692502167966"]=true}
 local nativeIcons={Gun={"196751820"},Knife={"196750384"}}
 local scopeHoldAnimations={["MM2"]="rbxassetid://15666234025",["MMV"]="rbxassetid://134818020160275"}
-local DATA_VERSION="4df829d97e77"
+local DATA_VERSION="14c6d8946038"
 local DATA_FILE="VisualsV2_Data.txt"
 local DATA_URL=type(env.VisualsV2DataUrl)=="string" and env.VisualsV2DataUrl
 or "https://raw.githubusercontent.com/genshinplayer01234-cyber/WorldV2DEV/refs/heads/visuals/VisualsV2Data.txt"
@@ -10215,7 +10215,6 @@ local staticMM2={
 {"Knife","Zombified_K_2022",{["itemid"]=11254182560,["itemname"]="Zombified",["itemtype"]="Knife",["rarity"]="Rare",["year"]="2022"}},
 {"Knife","ZombifiedK",{["itemid"]=4210928053,["itemname"]="Zombified",["itemtype"]="Knife",["rarity"]="Uncommon",["year"]="2019"}},
 -- (added from the MMV captures)
-{"Gun","Warlock_G",{["itemid"]=74809018890072,["itemname"]="Warlock",["itemtype"]="Gun",["rarity"]="Secret"}},
 {"Knife","EmbersickleChroma",{["itemid"]=113946366917108,["itemname"]="Embersickle",["itemtype"]="Knife",["rarity"]="Godly",["year"]="2026",["chroma"]=true}},
 {"Knife","Hexed_K_2026",{["itemid"]=131817568341292,["itemname"]="Hexed",["itemtype"]="Knife",["rarity"]="Common",["year"]="2026"}},
 {"Knife","SorryChroma",{["itemid"]=117030448148725,["itemname"]="Corrupt",["itemtype"]="Knife",["rarity"]="Secret",["chroma"]=true}},
@@ -10676,7 +10675,9 @@ else
 mesh=root:FindFirstChildWhichIsA("SpecialMesh")
 meshId=mesh and assetId(mesh.MeshId)
 end
-local recorded=meshId and recordedGrip(entry.kind,meshId,root,mesh)
+-- (scythes and Synthwave knives keep the grip they had before: their recorded grips held them wrong)
+local recorded=meshId and not (entry.kind=="Knife" and (compact(entry.id)..compact(entry.name)):find("scythe",1,true))
+and not compact(entry.id):find("synthwave",1,true) and recordedGrip(entry.kind,meshId,root,mesh)
 if recorded then
 grip=recorded;useToolGrip=true
 clone:SetAttribute("VisualsV2_RecordedGripOffset",true)
@@ -11178,6 +11179,10 @@ state.model.Parent=nil
 restoreOriginals(state)
 end
 local function restoreVisuals(state)
+for beam,saved in pairs(state.nativeBeams or {}) do
+if beam.Parent then for key,value in pairs(saved) do pcall(function() beam[key]=value end) end end
+end
+state.nativeBeams=nil
 stopScopeHold(state)
 state.holdRetry=nil
 state.scopeTemplateHold=nil
@@ -11204,13 +11209,26 @@ end
 if marked then targets[#targets+1]=part end
 end
 end
-if #targets==0 then targets[1]=root end
+-- (parts the game tags ChromaPart are marked Chroma in the data: like the game, only their own color
+-- cycles (a textured part shows it where its texture is see-through, e.g. Evergreen's ribbons). A weapon
+-- with nothing marked falls back to tinting its whole body. LightParts (Evergreen's lights) blink
+-- through the game's five light colors)
+local tagged=#targets>0
+if not tagged then targets[1]=root end
 for index,part in ipairs(targets) do
 local decal=part:IsA("Decal")
-targets[index]={object=part,decal=decal,mesh=not decal and part:FindFirstChildWhichIsA("SpecialMesh") or nil}
+targets[index]={object=part,decal=decal,tagged=tagged,original=decal and part.Color3 or part.Color,
+mesh=not tagged and not decal and part:FindFirstChildWhichIsA("SpecialMesh") or nil}
+end
+local light=0
+for _,part in ipairs(model:GetDescendants()) do
+if part:IsA("BasePart") and part.Name=="LightPart" then
+targets[#targets+1]={object=part,light=light,original=part.Color};light=light+1
+end
 end
 return targets
 end
+local LIGHT_COLORS={Color3.new(0,0.74,0.70),Color3.new(0.92,0,0),Color3.new(0.94,0.87,0),Color3.new(0.86,0,0.86),Color3.new(0.11,0.9,0)}
 local WHITE=Color3.new(1,1,1)
 -- (the game's /chromatoggle turns chroma colors on and off for real chroma weapons (its ChromaScript gets a
 -- ToggleChromas event); the visual chroma weapons follow the same switch: off, they show their plain
@@ -11231,12 +11249,18 @@ end)
 end
 local function updateChroma(state)
 if not state.chromaTargets then return end
+local off=env.VisualsV2Runtime.ChromaOff
 local color=Color3.fromHSV((os.clock()*0.15)%1,1,1)
-if env.VisualsV2Runtime.ChromaOff then color=WHITE end
+local step=math.floor(os.clock()/0.5)
 local vertex
 for _,target in ipairs(state.chromaTargets) do
 local part,mesh=target.object,target.mesh
-if target.decal then part.Color3=color
+if off then
+-- (/chromatoggle off: every chroma part shows its own plain color again)
+if target.decal then part.Color3=target.original else part.Color=target.original end
+if mesh then mesh.VertexColor=Vector3.new(1,1,1) end
+elseif target.light then part.Color=LIGHT_COLORS[(step+target.light)%#LIGHT_COLORS+1]
+elseif target.decal then part.Color3=color
 elseif mesh then
 if part.Color~=WHITE then part.Color=WHITE end
 vertex=vertex or Vector3.new(color.R,color.G,color.B)
@@ -11259,6 +11283,18 @@ if object[property]~=value then
 record.writing=true;object[property]=value;record.writing=false
 end
 end
+local PLAIN_SHOT={Color=ColorSequence.new(Color3.new(1,1,1)),Texture="",LightEmission=0.5,TextureLength=1,
+TextureMode=Enum.TextureMode.Stretch,Transparency=NumberSequence.new({NumberSequenceKeypoint.new(0,1),
+NumberSequenceKeypoint.new(0.202,0.95),NumberSequenceKeypoint.new(1,0.6)})}
+local function plainShot(beam,state)
+state.nativeBeams=state.nativeBeams or {}
+if not state.nativeBeams[beam] then
+local saved={}
+for key in pairs(PLAIN_SHOT) do saved[key]=beam[key] end
+state.nativeBeams[beam]=saved
+end
+for key,value in pairs(PLAIN_SHOT) do pcall(function() beam[key]=value end) end
+end
 local function hideOriginals(tool,state)
 if state.nativeDirty==false then return end
 state.nativeDirty=false
@@ -11267,6 +11303,11 @@ if not owned(object,tool) then
 local property,value=nil,nil
 if object:IsA("BasePart") then property,value="LocalTransparencyModifier",1
 elseif object:IsA("Decal") then property,value="Transparency",1
+elseif object:IsA("Beam") and object.Name=="CustomBeam" then
+-- (a gun's CustomBeam is what the game draws its shots with: hidden, the shot vanished. It's kept on;
+-- with a visual gun that has no shot of its own it's made the plain white shot every other gun fires)
+local behavior=env.VisualsV2Runtime.OriginalVisuals.GetGunBehavior(state.entryId)
+if not (behavior and behavior.beam) then plainShot(object,state) end
 elseif object:IsA("ParticleEmitter") or object:IsA("Trail") or object:IsA("Beam")
 or object:IsA("Fire") or object:IsA("Smoke") or object:IsA("Sparkles")
 or object:IsA("Light") or (object:IsA("BillboardGui") and object.Name=="CantShoot") then property,value="Enabled",false end
@@ -11332,6 +11373,7 @@ if not handle or not handle:IsA("BasePart") then state.blocked="No usable weapon
 local nativeAttachment=gripAttachment(handle)
 local nativeGrip=state.useToolGrip and equippedGrip(tool,handle,state) or nativeAttachment and nativeAttachment.CFrame or tool.Grip
 local signature=cacheKey(entry)..":"..entry.revision
+state.entryId=entry.id
 if state.applied==signature and state.handle==handle and state.model then
 if state.appliedGrip~=nativeGrip then
 local delta=nativeGrip*state.appliedGrip:Inverse()
@@ -12326,6 +12368,18 @@ local info=originals and originals.GetEffectInfo(selected)
 if not outputs and info and info.texture then outputs={} end
 if outputs then
 state={id=selected,handle=handle,outputs=outputs,originals={},textures={}}
+-- (Rainbow Fire: the game cycles its fire through the whole rainbow, about once every 6 s, with a black
+-- secondary color; the recorded copy is one frozen color, so it's cycled here)
+if selected=="Rainbow" then
+state.rainbow={}
+for _,output in ipairs(outputs) do
+local objects={output}
+for _,object in ipairs(output:GetDescendants()) do objects[#objects+1]=object end
+for _,object in ipairs(objects) do
+if object:IsA("Fire") then state.rainbow[#state.rainbow+1]=object end
+end
+end
+end
 if info and info.texture then
 local target=handle.Parent and handle.Parent:GetAttribute(SKIN_MARKER) and handle.Parent or handle
 local objects={target}
@@ -12403,6 +12457,15 @@ local elapsed=0
 heartbeat=RunService.Heartbeat:Connect(function(dt)
 elapsed=elapsed+dt
 if elapsed>=0.25 then elapsed=0;safeUpdate() end
+local hue=(os.clock()/6)%1
+for _,state in pairs(states) do
+if state.rainbow then
+local color=Color3.fromHSV(hue,1,1)
+for _,fire in ipairs(state.rainbow) do
+if fire.Parent then fire.Color=color;fire.SecondaryColor=Color3.new(0,0,0) end
+end
+end
+end
 end)
 end
 env.VisualsV2Runtime.ClientKnifeEffects={
@@ -14388,10 +14451,11 @@ return container:FindFirstChildWhichIsA("ScrollingFrame",true)
 or (container:FindFirstChildWhichIsA("UIGridLayout") and container)
 end
 end
--- (the order MMV's own inventory uses: Unique, Ancient/Secret, Godly, Legendary, Rare, Uncommon, Common, then
--- the event rarities (Classic, Christmas, Halloween, ...); in each, by name, and a chroma right after its
--- normal version)
-local rarityOrder={Unique=1,Ancient=2,Secret=2,Godly=3,Legendary=4,Rare=5,Uncommon=6,Common=7}
+-- (the order the game's own inventory uses: its rarity Sort numbers (Database.Sync.Rarities), then the
+-- item's name, then its item id (so "ChromaDarkbringer" comes before "Darkbringer", "Deathshard" before
+-- "DeathshardChroma"))
+local rarityOrder={Secret=65,Unique=70,Ancient=75,Godly=80,Legendary=85,Rare=90,Uncommon=95,Common=100,
+Halloween=104,Christmas=105,Classic=110,Vintage=110}
 local iconEntries={}
 local function imageKey(value)
 value=tostring(value or ""):lower()
@@ -14413,14 +14477,13 @@ local candidates=iconEntries[key] or {};iconEntries[key]=candidates;candidates[#
 end
 end
 for _,item in ipairs(entries) do
-item.rank=rarityOrder[item.data.Rarity] or 8
+item.rank=rarityOrder[item.data.Rarity] or 108
 item.chroma=item.data.Chroma==true
 item.name=item.data.ItemName:lower()
 end
 table.sort(entries,function(a,b)
 if a.rank~=b.rank then return a.rank<b.rank end
 if a.name~=b.name then return a.name<b.name end
-if a.chroma~=b.chroma then return b.chroma end
 if a.entry.id~=b.entry.id then return a.entry.id<b.entry.id end
 return a.kind<b.kind
 end)
