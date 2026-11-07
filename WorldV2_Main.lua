@@ -10522,26 +10522,6 @@ end
 toggle("Loop Bomb Fling Player(s)","bombFlingLoopSelected",function(value)
 if value then startLoop("selected",flingSelected) else stopLoop("selected") end
 end)
--- (0: the next fling starts as soon as the last one ends, so the bomb keeps going at them)
-section:AddSlider("Loop Bomb Fling Delay (seconds)",0,6,settings.loopDelay,function(value)
-settings.loopDelay=math.clamp(tonumber(value) or 3,0,6);SetCfg("bombFlingLoopDelay",settings.loopDelay)
-end)
-section:AddSlider("Bomb Fling Duration",MIN_DURATION,MAX_DURATION,settings.duration,function(value)
-settings.duration=math.clamp(tonumber(value) or MIN_DURATION,MIN_DURATION,MAX_DURATION);SetCfg("bombFlingDuration",settings.duration)
-end)
-toggle("Keep Bomb In Your Body","bombHideInBody",function(value) settings.hideInBody=value end)
-section:AddLabel(("Tougher players are given up to %d s to get flung"):format(HOP_TIME))
--- (what has worked so far, for Bomb Fling and Bomb Ragdoll: hits, time to fling and each aiming way;
--- the last attempts are printed to the console, F9)
-section:AddButton("Show Bomb Fling / Ragdoll Stats",function()
-local lines=aim.Summary()
-notify(table.concat(lines,"\n"),3)
-print("[World V2] Bomb Fling / Ragdoll stats")
-for _,line in ipairs(lines) do print("  "..line) end
-for _,entry in ipairs(aim.Recent()) do
-print(("  %s %s: %s in %.1f s, way %s%s"):format(entry.kind,entry.name,entry.hit and "hit" or "missed",entry.took,entry.way,entry.moving and " (moving)" or "")..(entry.place and (", "..entry.place) or "")..(entry.out and ", out of the map" or ""))
-end
-end)
 local function autoFling(name,key,finder)
 local recent={}
 toggle("Auto Bomb Fling "..name,key,function(value)
@@ -10711,6 +10691,41 @@ end
 section:AddKeybind("Bomb Fling Murderer Keybind","B",function() keyToggle(BIND_KEYS[2],"Murderer") end)
 section:AddKeybind("Bomb Fling Sheriff Keybind","N",function() keyToggle(BIND_KEYS[1],"Sheriff") end)
 section:AddKeybind("Bomb Fling Player Keybind","H",function() keyToggle(BIND_KEYS[3],"Player") end)
+-- (Bomb Fling Configurations: the loop delay, how long each fling may take, and where the bomb is kept
+-- between flings)
+section:AddLabel("Bomb Fling Configurations")
+-- (0: the next fling starts as soon as the last one ends, so the bomb keeps going at them)
+section:AddSlider("Loop Bomb Fling Delay (seconds)",0,6,settings.loopDelay,function(value)
+settings.loopDelay=math.clamp(tonumber(value) or 3,0,6);SetCfg("bombFlingLoopDelay",settings.loopDelay)
+end)
+section:AddSlider("Bomb Fling Duration",MIN_DURATION,MAX_DURATION,settings.duration,function(value)
+settings.duration=math.clamp(tonumber(value) or MIN_DURATION,MIN_DURATION,MAX_DURATION);SetCfg("bombFlingDuration",settings.duration)
+end)
+section:AddLabel(("Tougher players are given up to %d s to get flung"):format(HOP_TIME))
+-- (where the bomb is kept: one of the two is always on. Turning one on turns the other off; turning off
+-- the one that's on turns the other on. Underground (the default) still puts it in your body while
+-- you're in the air, on a platform with room under it, or with players close by)
+local keep={closing=false}
+local function keepOne(field,value)
+local other=keep[field=="under" and "body" or "under"]
+if keep.closing or not (alive and runtimeAlive) or not other then return end
+if other:Get()==value then other:Set(not value) end
+-- (the hub can report a flip a moment late: checked again so exactly one stays on)
+task.delay(0.5,function()
+if keep.closing or not (alive and runtimeAlive) or not (keep.under and keep.body) then return end
+if keep.under:Get()==keep.body:Get() then keep.under:Set(not settings.hideInBody) end
+end)
+end
+keep.under=addToggle(section,"Keep Bomb Underground",not settings.hideInBody,function(value)
+keepOne("under",value)
+end)
+keep.body=addToggle(section,"Keep Bomb In Your Body",settings.hideInBody,function(value)
+SetCfg("bombHideInBody",value);settings.hideInBody=value;keepOne("body",value)
+end)
+controls[#controls+1]=keep.under;controls[#controls+1]=keep.body
+pcall(function()
+section:AddParagraph("Only One At A Time","One of these two is always on. Turning one on turns the other off.")
+end)
 -- Bomb Ragdoll: laid out like Bomb Fling, with the same Fake Bomb, but only knocks people over
 local rsection=mainTab:AddSection("Bomb Ragdoll","Utilities")
 local function rtoggle(name,key,callback)
@@ -10931,6 +10946,7 @@ rsection:AddKeybind("Bomb Ragdoll Murderer Keybind","C",function() ragdollKey(RA
 rsection:AddKeybind("Bomb Ragdoll Sheriff Keybind","M",function() ragdollKey(RAGDOLL_BIND_KEYS[1],"Sheriff") end)
 rsection:AddKeybind("Bomb Ragdoll Player Keybind","P",function() ragdollKey(RAGDOLL_BIND_KEYS[3],"Player") end)
 return function()
+keep.closing=true
 for _,controller in ipairs(controls) do pcall(function() controller:Set(false) end) end
 untilOut=nil
 for _,connection in ipairs(clickConnections) do connection:Disconnect() end
