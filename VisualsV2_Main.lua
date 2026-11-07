@@ -8637,7 +8637,7 @@ local raw={}
 local scopeMeshes={["15374602183"]=true,["15374679651"]=true,["79692502167966"]=true}
 local nativeIcons={Gun={"196751820"},Knife={"196750384"}}
 local scopeHoldAnimations={["MM2"]="rbxassetid://15666234025",["MMV"]="rbxassetid://134818020160275"}
-local DATA_VERSION="e9d7a39eb907"
+local DATA_VERSION="4df829d97e77"
 local DATA_FILE="VisualsV2_Data.txt"
 local DATA_URL=type(env.VisualsV2DataUrl)=="string" and env.VisualsV2DataUrl
 or "https://raw.githubusercontent.com/genshinplayer01234-cyber/WorldV2DEV/refs/heads/visuals/VisualsV2Data.txt"
@@ -11212,9 +11212,27 @@ end
 return targets
 end
 local WHITE=Color3.new(1,1,1)
+-- (the game's /chromatoggle turns chroma colors on and off for real chroma weapons (its ChromaScript gets a
+-- ToggleChromas event); the visual chroma weapons follow the same switch: off, they show their plain
+-- colors)
+do
+local runtime=env.VisualsV2Runtime
+if runtime.ChromaToggleConnection then pcall(function() runtime.ChromaToggleConnection:Disconnect() end) end
+runtime.ChromaOff=runtime.ChromaOff==true
+task.spawn(function()
+local scripts=LocalPlayer:WaitForChild("PlayerScripts",30)
+local visuals=scripts and scripts:WaitForChild("WeaponVisuals",30)
+local chroma=visuals and visuals:WaitForChild("ChromaScript",30)
+local toggle=chroma and chroma:WaitForChild("ToggleChromas",30)
+if not (toggle and toggle:IsA("BindableEvent")) or not runtimeAlive then return end
+runtime.ChromaToggleConnection=toggle.Event:Connect(function() runtime.ChromaOff=not runtime.ChromaOff end)
+RootMaid:GiveTask(function() pcall(function() runtime.ChromaToggleConnection:Disconnect() end) end)
+end)
+end
 local function updateChroma(state)
 if not state.chromaTargets then return end
 local color=Color3.fromHSV((os.clock()*0.15)%1,1,1)
+if env.VisualsV2Runtime.ChromaOff then color=WHITE end
 local vertex
 for _,target in ipairs(state.chromaTargets) do
 local part,mesh=target.object,target.mesh
