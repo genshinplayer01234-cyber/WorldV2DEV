@@ -9741,7 +9741,9 @@ local out=(function()
 -- (the bomb's push: straight down with no spin (a spinning bomb throws people sideways, across the
 -- map, more often), swept through their body. Resting it on top of them (TOP_STILL/TOP_MOVING) worked on
 -- a test account but not on real players in public servers: it sat on their heads and didn't move them)
-local api={DOWN_SPEED=80,KNOCK_TIME=3,WATCH_TIME=5,MAX_AGAIN=3,SPIN=0,TOP_STILL=false,TOP_MOVING=false}
+-- (TEST: full spin all the time, 1 s push after a knock, one re-fling. Public test with spin off,
+-- duration 1: 25% untouched vs 13% for the original add-on that always spun, 19.9 vs 26.5 tries a minute)
+local api={DOWN_SPEED=80,KNOCK_TIME=1,WATCH_TIME=5,MAX_AGAIN=1,SPIN=1,TOP_STILL=false,TOP_MOVING=false}
 -- (the bomb is only yours while it's not far from you for too long: kept more than FAR studs from you
 -- for a few seconds, the game gives it to a player near it. So after FAR_BUDGET s away it's brought back
 -- under you for REST s, then the fling carries on. Tested 100 studs away: 2.5 s away / 0.6 s back lost
