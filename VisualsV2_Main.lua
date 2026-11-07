@@ -10697,9 +10697,11 @@ end
 end
 if entry.kind=="Knife" then
 local key=compact(entry.id)..compact(entry.name)
--- (every scythe and every Synthwave is held exactly like Batwing (the "Scythe" item): the same grip,
--- whatever else it has)
-if key:find("scythe",1,true) or key:find("synthwave",1,true) or compact(entry.id)=="icewing" then
+-- (scythes without a grip of their own are held like Batwing (the "Scythe" item), as before; Ancient
+-- Gingerscythe and Ancient Synthwave (and its chroma) always are)
+local ancient=compact(entry.id)=="gingerscytheancient" or compact(entry.id)=="synthwaveancient"
+or compact(entry.id)=="synthwaveancientchroma"
+if ancient or ((key:find("scythe",1,true) or compact(entry.id)=="icewing") and not clone:GetAttribute("VisualsV2_RecordedGripOffset")) then
 grip=KNOWN_GRIPS["305826272"].grip;useToolGrip=true
 end
 end
@@ -11273,7 +11275,7 @@ for _,target in ipairs(state.chromaTargets) do
 local part,mesh=target.object,target.mesh
 if off and target.decal and target.pastel then
 if target.texture and part.Texture~=target.texture then part.Texture=target.texture end
-part.Color3=Color3.fromRGB(255,200,225)
+part.Color3=Color3.fromRGB(255,165,205)
 elseif off and target.decal then
 -- (/chromatoggle: like the game, the chroma decal shows the rainbow gradient, untinted)
 if not part.Texture:find(CHROMA_GRADIENT,1,true) then part.Texture="rbxassetid://"..CHROMA_GRADIENT end
