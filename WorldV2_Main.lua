@@ -188,7 +188,7 @@ if ok and type(result) == "table" then env = result end
 end
 local inMurderMystery = game.GameId == 66654135 or game.PlaceId == 142823291
 or game.GameId == 10413186812 or game.GameId == 10769671266
-or game.PlaceId == 93017634738276 or game.PlaceId == 81374640397860
+or game.PlaceId == 93017634738276 or game.PlaceId == 81374640397860 or game.PlaceId == 113882854711551 or game.GameId == 10774552072
 or (type(shared) == "table" and (shared.game_name == "Murder Mystery 2" or shared.game_name == "Murder Mystery Modded"))
 local function w2Section(build,label)
 local ok,problem=xpcall(build,function(message)
@@ -300,7 +300,7 @@ end
 -- (MM2 and MMV each keep their own settings, in the same file: under games.MM2 and games.MMV. Button
 -- positions are shared. The first time in a game, it starts from the settings saved before this)
 local SAVE_GAME=(game.GameId==10413186812 or game.GameId==10769671266 or game.PlaceId==93017634738276
-or game.PlaceId==81374640397860 or (type(shared)=="table" and shared.game_name=="Murder Mystery Modded")) and "MMV"
+or game.PlaceId==81374640397860 or game.PlaceId == 113882854711551 or game.GameId == 10774552072 or (type(shared)=="table" and shared.game_name=="Murder Mystery Modded")) and "MMV"
 or ((game.GameId==66654135 or game.PlaceId==142823291 or (type(shared)=="table" and shared.game_name=="Murder Mystery 2")) and "MM2")
 or "Other"
 local savedGames={}
@@ -1395,6 +1395,7 @@ end
 local function roleNow(plr)
 local role=attributeRole(plr) or dataRole(plr)
 if role=="Dead" then return nil end
+if role=="Innocent" and holds(plr,"Gun") then return "Sheriff" end
 if role then return role end
 if holds(plr,"Knife") then return "Murderer" end
 if holds(plr,"Gun") then return "Sheriff" end
@@ -1406,7 +1407,7 @@ for _,plr in ipairs(Players:GetPlayers()) do
 if plr~=LocalPlayer and not (skip and skip(plr)) and living(plr) then
 local said=attributeRole(plr) or dataRole(plr)
 if said==role then return plr end
-if not fallback and said~="Dead" and (said==nil or said==role) and holds(plr,kind) then fallback=plr end
+if not fallback and said~="Dead" and (said==nil or said==role or (kind=="Gun" and said=="Innocent")) and holds(plr,kind) then fallback=plr end
 end
 end
 return fallback
@@ -1419,6 +1420,7 @@ Sheriff=function(skip) return find("Sheriff","Gun",skip) end,
 Murderer=function(skip) return find("Murderer","Knife",skip) end,
 IsMine=function(role)
 local said=attributeRole(LocalPlayer) or dataRole(LocalPlayer)
+if role=="Sheriff" and said=="Innocent" and holds(LocalPlayer,"Gun") then return true end
 if said then return said==role end
 return holds(LocalPlayer,role=="Murderer" and "Knife" or "Gun")
 end,
@@ -12360,7 +12362,7 @@ end)
 end,"Section \"W2 Vote Map\"")
 ;w2Section(function()
 local isMMV=game.GameId==10413186812 or game.GameId==10769671266 or game.PlaceId==93017634738276
-or game.PlaceId==81374640397860 or (type(shared)=="table" and shared.game_name=="Murder Mystery Modded")
+or game.PlaceId==81374640397860 or game.PlaceId == 113882854711551 or game.GameId == 10774552072 or (type(shared)=="table" and shared.game_name=="Murder Mystery Modded")
 if not isMMV then return end
 local runtime=env.WorldV2Runtime
 local ReplicatedStorage=game:GetService("ReplicatedStorage")
@@ -12378,8 +12380,9 @@ if not have[command:lower()] then have[command:lower()]=true;MAPS[#MAPS+1]=comma
 end
 end
 local NONE="None"
+-- (sent every 0.4s from the moment the next map loads until you are teleported into it)
+local INTERVAL,GIVE_UP,FAR=0.4,40,250
 local settings={
-delay=math.clamp(tonumber(C("w2AutoCommandsDelay",2)) or 2,0.3,5),
 map=tostring(C("w2AutoCommandsMap","")),
 sheriff=tostring(C("w2AutoCommandsSheriff","")),
 murderer=tostring(C("w2AutoCommandsMurderer","")),
@@ -12387,7 +12390,7 @@ murderer=tostring(C("w2AutoCommandsMurderer","")),
 local loops={}
 local alive=true
 local function sendChatCommand(command)
-pcall(function()
+task.spawn(pcall,function()
 if TextChatService.ChatVersion==Enum.ChatVersion.TextChatService then
 local channels=TextChatService:FindFirstChild("TextChannels")
 local channel=channels and channels:FindFirstChild("RBXGeneral")
@@ -12399,41 +12402,40 @@ if request then request:FireServer(command,"All") end
 end
 end)
 end
-local WORDS={"intermission","voting","victory","defeat","game over","koniec","remis"}
-local lastLook,lastAnswer=-math.huge,false
-local function roundOverOrLobby()
-if os.clock()-lastLook<1 then return lastAnswer end
-lastLook=os.clock()
-local ok,result=pcall(function()
-local playerGui=LocalPlayer:FindFirstChildOfClass("PlayerGui")
-if not playerGui then return false end
-for _,gui in ipairs(playerGui:GetDescendants()) do
-if gui:IsA("TextLabel") or gui:IsA("TextButton") then
-local text=string.lower(gui.Text)
-for _,word in ipairs(WORDS) do
-if text:find(word,1,true) then return true end
+local function inMap()
+local character=LocalPlayer.Character
+local root=character and character:FindFirstChild("HumanoidRootPart")
+local lobby=workspace:FindFirstChild("Lobby")
+if not root or not lobby then return false end
+return (root.Position-lobby:GetPivot().Position).Magnitude>FAR
 end
-end
-end
-return false
+-- the next map has loaded (it has a Spawns folder, which can arrive a moment after the map itself)
+local loadingAt=nil
+local mapConn
+mapConn=workspace.ChildAdded:Connect(function(child)
+if not alive or not runtimeAlive then mapConn:Disconnect();return end
+if not child:IsA("Model") or child.Name=="ThrowingKnife" or Players:FindFirstChild(child.Name) then return end
+task.spawn(function()
+if child:WaitForChild("Spawns",3) and not inMap() then loadingAt=os.clock() end
 end)
-lastAnswer=ok and result==true
-return lastAnswer
-end
+end)
 local function startLoop(key,command,target)
 local token={}
 loops[key]=token
 task.spawn(function()
-local sentThisRound=false
+local name=nil
 while loops[key]==token and alive and runtimeAlive do
-if not sentThisRound or roundOverOrLobby() then
-local name=target()
-if name~="" then
-sendChatCommand(command.." "..name)
-sentThisRound=true
+local at=loadingAt
+if at and not inMap() and os.clock()-at<GIVE_UP then
+-- (the name is read once per map load, so a pick stays the same for the whole load)
+if name==nil then name=target() end
+if name~="" then sendChatCommand(command.." "..name) end
+task.wait(INTERVAL)
+else
+name=nil
+if at and (inMap() or os.clock()-at>=GIVE_UP) then loadingAt=nil end
+task.wait(0.1)
 end
-end
-task.wait(settings.delay)
 end
 end)
 end
@@ -12451,10 +12453,6 @@ local list={NONE}
 for _,plr in ipairs(Players:GetPlayers()) do list[#list+1]=plr.Name end
 return list
 end
-section:AddSlider("W2 Command Delay (seconds)",0.3,5,settings.delay,function(value)
-settings.delay=math.clamp(math.floor((tonumber(value) or 2)*10+0.5)/10,0.3,5)
-SetCfg("w2AutoCommandsDelay",settings.delay)
-end)
 addDropdown(section,"W2 Select Update Map",MAPS,table.find(MAPS,settings.map) and settings.map or nil,function(value)
 if not table.find(MAPS,value) then return false end
 settings.map=value
@@ -12497,7 +12495,7 @@ end)
 runtime.RegisterReset(function()
 for _,controller in ipairs(controls) do pcall(function() controller:Set(false) end) end
 table.clear(loops)
-settings.delay,settings.map,settings.sheriff,settings.murderer=2,"","",""
+settings.map,settings.sheriff,settings.murderer="","",""
 if not runtimeAlive then alive=false end
 end)
 end,"Section \"W2 Auto Commands\"")
@@ -12650,7 +12648,8 @@ autoTap=C("w2AutoThrowAutoTap",false)==true,
 range=math.clamp(tonumber(C("w2AutoThrowAutoTapRange",40)) or 40,5,200),
 wallCheck=C("w2AutoThrowWallCheck",false)==true,
 stab=C("w2AutoStabEnabled",false)==true,
-stabRange=math.clamp(tonumber(C("w2AutoStabRange",7)) or 7,2,15)}
+stabRange=math.clamp(tonumber(C("w2AutoStabRange",7)) or 7,2,15),
+drawRange=math.clamp(tonumber(C("w2AutoDrawRange",0)) or 0,0,100)}
 local state={stabAt=0,on=false,knife=nil,holding=nil,inHand=false,readyAt=0,raiseAt=0,tries=0,noRaise=false,
 gaveUp=false,run=0,throws=0,raises=0,button=nil,scannedAt=-math.huge,lastInput=nil,connections={}}
 local ContextActionService=game:GetService("ContextActionService")
@@ -13056,6 +13055,25 @@ end
 end
 return best
 end
+-- (Auto Draw Range: 0 draws whenever the knife is in your hand; 1-100 only while someone is that close,
+-- kept for half a second after they leave so it doesn't flicker at the edge)
+local function drawWanted(character)
+if not state.on then return false end
+if settings.drawRange<=0 then return true end
+local root=character:FindFirstChild("HumanoidRootPart")
+if not root then return false end
+for _,plr in ipairs(Players:GetPlayers()) do
+local other=plr~=LocalPlayer and plr.Character
+local otherRoot=other and other:FindFirstChild("HumanoidRootPart")
+local humanoid=other and other:FindFirstChildOfClass("Humanoid")
+if otherRoot and humanoid and humanoid.Health>0 and not spared(plr)
+and (otherRoot.Position-root.Position).Magnitude<=settings.drawRange then
+state.drawUntil=os.clock()+0.5
+return true
+end
+end
+return os.clock()<(state.drawUntil or 0)
+end
 local function tick()
 local character=LocalPlayer.Character
 local humanoid=character and character:FindFirstChildOfClass("Humanoid")
@@ -13092,13 +13110,15 @@ pcall(function() knife:Activate() end)
 end
 return
 end
+local want=drawWanted(character)
+if not want and (state.casHold or state.buttonHeld) then letGoOfHold(false) end
 local up=raised(character,knife)
 -- (when the knife went up, so a throw can wait for the draw to finish)
 if up then state.upSince=state.upSince or os.clock() else state.upSince=nil end
 if up then
 putAway()
 state.holding,state.tries,state.pressThrows="game",0,nil
-elseif state.on then
+elseif want then
 state.holding=nil
 if not state.noRaise and os.clock()>=state.raiseAt then
 if state.pressThrows==state.throws then state.tries=state.tries+1 end
@@ -13114,8 +13134,8 @@ else
 putAway()
 state.holding=nil
 end
-if state.on and not up and os.clock()>=state.readyAt and not state.winding then holdUp(character,knife) end
-local pressing=state.on and not up and not state.noRaise and os.clock()<(state.pressedAt or 0)+0.35
+if want and not up and os.clock()>=state.readyAt and not state.winding then holdUp(character,knife) end
+local pressing=want and not up and not state.noRaise and os.clock()<(state.pressedAt or 0)+0.35
 -- (Auto Throw throws whenever your knife is in your hand and someone's in sight: a raised knife, by you
 -- or by Auto Draw, is let go the game's way; otherwise it winds up and throws itself)
 if settings.autoTap and os.clock()>=state.readyAt and not state.winding and not pressing then
@@ -13166,6 +13186,10 @@ local setDrawLit,setLit
 local enableToggle=toggle("Enable Auto Draw Knife","w2AutoThrowEnabled",function(value)
 apply(value)
 if setDrawLit then setDrawLit(value) end
+end)
+section:AddSlider("Auto Draw Knife Range (Studs, 0 = Off)",0,100,settings.drawRange,function(value)
+settings.drawRange=math.clamp(math.floor((tonumber(value) or 0)+0.5),0,100)
+SetCfg("w2AutoDrawRange",settings.drawRange)
 end)
 local autoThrowToggle=toggle("Enable Auto Throw Knife","w2AutoThrowAutoTap",function(value)
 settings.autoTap=value
@@ -14111,7 +14135,7 @@ LPH_ATTRIBUTES(VM(NONE), TRANSFORM(CONTROL_FLOW, EXTRACT(CONSTANTS)))
 local scope13011={}
 if not inMurderMystery then return end
 scope13011.runtime=env.WorldV2Runtime
-scope13011.isMMV=game.GameId==10413186812 or game.GameId==10769671266 or game.PlaceId==93017634738276 or game.PlaceId==81374640397860
+scope13011.isMMV=game.GameId==10413186812 or game.GameId==10769671266 or game.PlaceId==93017634738276 or game.PlaceId==81374640397860 or game.PlaceId == 113882854711551 or game.GameId == 10774552072
 -- (MMV has Firefly Symbols only; MM2 has Firefly Protection and Firefly Symbols)
 scope13011.UserInput=game:GetService("UserInputService")
 scope13011.section=mainTab:AddSection("Firefly Protection","Utilities")
