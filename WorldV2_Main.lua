@@ -13055,21 +13055,27 @@ end
 end
 return best
 end
--- (Auto Draw Range: 0 draws whenever the knife is in your hand; 1-100 only while someone is that close,
--- kept for half a second after they leave so it doesn't flicker at the edge)
+-- (Auto Draw Range: 0 draws whenever the knife is in your hand; 1-100 draws while someone is that close
+-- (walls or not) or anyone is in clear sight at any distance; kept for half a second after, so it doesn't flicker)
+local SIGHT_EVERY=0.15
 local function drawWanted(character)
 if not state.on then return false end
 if settings.drawRange<=0 then return true end
 local root=character:FindFirstChild("HumanoidRootPart")
 if not root then return false end
+local checkSight=os.clock()>=(state.sightAt or 0)
+if checkSight then state.sightAt=os.clock()+SIGHT_EVERY end
+local from=checkSight and throwOrigin(character)
 for _,plr in ipairs(Players:GetPlayers()) do
 local other=plr~=LocalPlayer and plr.Character
 local otherRoot=other and other:FindFirstChild("HumanoidRootPart")
 local humanoid=other and other:FindFirstChildOfClass("Humanoid")
-if otherRoot and humanoid and humanoid.Health>0 and not spared(plr)
-and (otherRoot.Position-root.Position).Magnitude<=settings.drawRange then
+if otherRoot and humanoid and humanoid.Health>0 and not spared(plr) then
+if (otherRoot.Position-root.Position).Magnitude<=settings.drawRange
+or (from and clearPath(character,from,other,otherRoot)) then
 state.drawUntil=os.clock()+0.5
 return true
+end
 end
 end
 return os.clock()<(state.drawUntil or 0)
